@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -105,6 +105,38 @@ afterEach(() => {
 });
 
 describe('command supervision', () => {
+  it('confines ACP client filesystem writes to the immutable write scope', async () => {
+    const { controller, store, task, repositoryRoot, guardTask } = await fixture();
+    await expect(
+      controller.writeTextFile({
+        sessionId: task.acpSessionId!,
+        path: path.join(repositoryRoot, 'result.txt'),
+        content: 'client fs result\n',
+      }),
+    ).resolves.toEqual({});
+    await expect(readFile(path.join(repositoryRoot, 'result.txt'), 'utf8')).resolves.toBe(
+      'client fs result\n',
+    );
+    expect(guardTask.mock.calls).toEqual([
+      [task.taskId, 'before_worker_mutation'],
+      [task.taskId, 'after_worker_mutation'],
+    ]);
+    expect((await store.readEvents(task.taskId)).map((event) => event.type)).toContain(
+      'client_fs_write_completed',
+    );
+
+    await expect(
+      controller.writeTextFile({
+        sessionId: task.acpSessionId!,
+        path: path.join(repositoryRoot, 'README.md'),
+        content: '# unauthorized\n',
+      }),
+    ).rejects.toMatchObject({ code: 'scope_violation' });
+    await expect(readFile(path.join(repositoryRoot, 'README.md'), 'utf8')).resolves.toBe(
+      '# Fixture\n',
+    );
+  });
+
   it('times out a command, cancels the session, and pauses with stable evidence', async () => {
     vi.useFakeTimers();
     const { controller, store, task, cancelSession } = await fixture();

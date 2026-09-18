@@ -775,17 +775,19 @@ export async function runDoctor(
     name: process.platform === 'darwin' ? 'seatbelt' : 'bubblewrap',
     ok: await executableOnPath(sandboxCommand),
     detail: `Sandbox executable: ${sandboxCommand}`,
-    required: true,
+    required: !config.allowUnsandboxed,
   });
   const sandbox = await detectSandbox();
   const networkIsolation =
     sandbox.networkIsolation ?? (sandbox.engine === 'seatbelt' ? 'seatbelt' : 'namespace');
   checks.push({
     name: 'command_sandbox',
-    ok: sandbox.available,
-    detail: sandbox.available
-      ? `Command sandbox engine: ${sandbox.engine} network=${networkIsolation} (verification / secret scanner / Git hooks)`
-      : `Command sandbox unavailable: ${sandbox.reason ?? 'unknown'}`,
+    ok: config.allowUnsandboxed || sandbox.available,
+    detail: config.allowUnsandboxed
+      ? 'Command sandbox bypassed by CODEX_REASONIX_ALLOW_UNSANDBOXED=true'
+      : sandbox.available
+        ? `Command sandbox engine: ${sandbox.engine} network=${networkIsolation} (verification / secret scanner / Git hooks)`
+        : `Command sandbox unavailable: ${sandbox.reason ?? 'unknown'}`,
     required: true,
   });
   checks.push({

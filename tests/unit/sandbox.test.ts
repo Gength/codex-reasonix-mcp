@@ -25,4 +25,12 @@ describe('Codex sandbox metadata', () => {
     }
     expect(() => parseSandboxContext(meta)).toThrow(/writable/);
   });
+
+  it('treats a disabled Codex permission sandbox as network-unrestricted', () => {
+    const meta = sandboxMeta('/tmp/repository') as {
+      'codex/sandbox-state-meta': { permissionProfile: Record<string, unknown> };
+    };
+    meta['codex/sandbox-state-meta'].permissionProfile = { type: 'disabled' };
+    expect(parseSandboxContext(meta).networkEnabled).toBe(true);
+  });
 });

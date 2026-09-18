@@ -118,6 +118,7 @@ describe('rc.3 context efficiency', () => {
       store,
       permissions: {
         onPermission: vi.fn(),
+        writeTextFile: vi.fn(),
         onToolCallUpdate: vi.fn(),
         finishPrompt: vi.fn(),
       },

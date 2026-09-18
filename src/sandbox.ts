@@ -127,7 +127,7 @@ export function parseSandboxContext(meta: unknown): SandboxContext {
     );
   }
   const networkEnabled =
-    parsed.data.permissionProfile.type !== 'disabled' &&
+    parsed.data.permissionProfile.type === 'disabled' ||
     parsed.data.permissionProfile.network === 'enabled';
   return { cwd, writable, networkEnabled, raw: parsed.data };
 }

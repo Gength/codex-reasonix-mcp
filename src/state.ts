@@ -31,6 +31,7 @@ import {
   TASK_RECORD_V2_SCHEMA_VERSION,
   TASK_RECORD_V3_SCHEMA_VERSION,
   REASONING_EFFORTS,
+  EFFECTIVE_REASONING_EFFORTS,
   TASK_STATUSES,
   TERMINAL_STATUSES,
   type AcceptanceEvidence,
@@ -253,6 +254,19 @@ function requireReasoningEffort(
   return value as ExecutionProfile['requestedReasoningEffort'];
 }
 
+function requireEffectiveReasoningEffort(
+  value: unknown,
+  field: string,
+): ExecutionProfile['effectiveReasoningEffort'] {
+  if (
+    typeof value !== 'string' ||
+    !(EFFECTIVE_REASONING_EFFORTS as readonly string[]).includes(value)
+  ) {
+    invalidState(`${field} must be one of: ${EFFECTIVE_REASONING_EFFORTS.join(', ')}`);
+  }
+  return value as ExecutionProfile['effectiveReasoningEffort'];
+}
+
 function parseExecutionProfile(value: unknown): ExecutionProfile {
   const record = requireRecord(value, 'executionProfile');
   const timeout =
@@ -276,7 +290,7 @@ function parseExecutionProfile(value: unknown): ExecutionProfile {
       record.requestedReasoningEffort,
       'executionProfile.requestedReasoningEffort',
     ),
-    effectiveReasoningEffort: requireReasoningEffort(
+    effectiveReasoningEffort: requireEffectiveReasoningEffort(
       record.effectiveReasoningEffort,
       'executionProfile.effectiveReasoningEffort',
     ),

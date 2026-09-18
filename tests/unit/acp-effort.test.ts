@@ -48,6 +48,10 @@ describe('Reasonix ACP effort selection', () => {
     );
   });
 
+  it('accepts adaptive Reasonix effort when the session reports auto', () => {
+    expect(() => assertReasonixEffort({ effort: 'auto' } as ReasonixStatus, 'low')).not.toThrow();
+  });
+
   it('accepts Reasonix balanced work mode for either bridge lane', () => {
     expect(laneWorkMode('balanced', 'fast')).toBe(true);
     expect(laneWorkMode('balanced', 'deep')).toBe(true);

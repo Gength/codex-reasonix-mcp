@@ -2,6 +2,18 @@
 
 All notable changes are documented here. Versions follow Semantic Versioning.
 
+## Unreleased
+
+### Fixed
+
+- Advertise and implement the ACP `fs/write_text_file` client capability required by
+  Reasonix 1.38 structured edits. Client-side writes are canonicalized into the isolated
+  worktree, checked against the immutable write scope and sensitive-path rules, protected by
+  source-collision gates, and followed by the existing repository safety scan.
+- Make `CODEX_REASONIX_ALLOW_UNSANDBOXED=true` an unconditional command-sandbox bypass so
+  hosts that detect bubblewrap but cannot create another namespace can use the documented
+  escape hatch.
+
 ## [0.2.0-rc.4] - 2026-08-04
 
 ### Added

@@ -2,6 +2,7 @@ import type {
   PromptResponse,
   RequestPermissionResponse,
   SessionNotification,
+  WriteTextFileResponse,
 } from '@agentclientprotocol/sdk';
 
 import { ReasonixPool, type ReasonixCallbacks, type ReasonixProcess } from '../acp.js';
@@ -21,7 +22,10 @@ import { statusToUsage } from './shared.js';
 export interface SessionSupervisionDependencies {
   config: BridgeConfig;
   store: StateStore;
-  permissions: Pick<PermissionAccess, 'onPermission' | 'onToolCallUpdate' | 'finishPrompt'>;
+  permissions: Pick<
+    PermissionAccess,
+    'onPermission' | 'writeTextFile' | 'onToolCallUpdate' | 'finishPrompt'
+  >;
   collision: Pick<CollisionAccess, 'guardTask' | 'releaseLease'>;
 }
 
@@ -57,9 +61,16 @@ export function laneViolation(task: TaskRecord, status: ReasonixStatus): string 
 /** Fast-lane session events that name AutoResearch, review/task skills, or subagents. */
 export function fastLaneSessionViolation(task: TaskRecord, update: unknown): string | undefined {
   if (task.executionProfile.workerLane !== 'fast') return undefined;
+  if (
+    !update ||
+    typeof update !== 'object' ||
+    (update as { sessionUpdate?: unknown }).sessionUpdate !== 'tool_call'
+  )
+    return undefined;
   const text = JSON.stringify(update);
-  if (FAST_LANE_FORBIDDEN_MARKERS.test(text)) {
-    return 'fast lane forbids AutoResearch, review/task skills, and subagents';
+  const match = FAST_LANE_FORBIDDEN_MARKERS.exec(text);
+  if (match) {
+    return `fast lane forbids AutoResearch, review/task skills, and subagents (matched: ${match[0]})`;
   }
   return undefined;
 }
@@ -92,6 +103,8 @@ export class SessionSupervisor implements SessionAccess {
     const callbacks: ReasonixCallbacks = {
       onPermission: async (params): Promise<RequestPermissionResponse> =>
         await this.dependencies.permissions.onPermission(params),
+      onWriteTextFile: async (params): Promise<WriteTextFileResponse> =>
+        await this.dependencies.permissions.writeTextFile(params),
       onSessionUpdate: async (notification) => await this.onSessionUpdate(notification),
       onStatusUpdate: async (update) => await this.onStatusUpdate(update),
       onPromptComplete: async (sessionId, response, status, error) =>
@@ -315,10 +328,12 @@ export class SessionSupervisor implements SessionAccess {
     }
     if (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update') {
       const task = await this.dependencies.store.loadTask(taskId);
-      const violation = fastLaneSessionViolation(task, update);
-      if (violation) {
-        await this.failFast(task, violation);
-        return;
+      if (update.sessionUpdate === 'tool_call') {
+        const violation = fastLaneSessionViolation(task, update);
+        if (violation) {
+          await this.failFast(task, violation, update);
+          return;
+        }
       }
       await this.dependencies.permissions.onToolCallUpdate(
         taskId,
@@ -371,12 +386,12 @@ export class SessionSupervisor implements SessionAccess {
   private async failFast(
     task: TaskRecord,
     violation: string,
-    update?: ReasonixStatusUpdate,
+    update?: ReasonixStatusUpdate | SessionNotification['update'],
   ): Promise<void> {
     await this.dependencies.store.recordEvent(
       task.taskId,
       'lane_policy_violation',
-      { violation, status: update?.status },
+      { violation, update: redact(update) },
       (record) => {
         if (!TERMINAL_STATUSES.has(record.status) && canTransition(record.status, 'failed')) {
           transitionTask(record, 'failed', 'lane_policy_violation', violation);
@@ -416,7 +431,10 @@ export class SessionSupervisor implements SessionAccess {
       return;
     }
     const taskSnapshot = await this.dependencies.store.loadTask(taskId);
-    if (status.effort !== taskSnapshot.executionProfile.requestedReasoningEffort) {
+    if (
+      status.effort !== 'auto' &&
+      status.effort !== taskSnapshot.executionProfile.requestedReasoningEffort
+    ) {
       await this.failTask(
         taskId,
         new BridgeError(

@@ -18,8 +18,9 @@ const raw = execFileSync(
   ['pack', '--dry-run', '--json', '--ignore-scripts'],
   { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] },
 );
-const report = JSON.parse(raw);
-if (!Array.isArray(report) || report.length !== 1 || !Array.isArray(report[0]?.files)) {
+const parsedReport = JSON.parse(raw);
+const report = Array.isArray(parsedReport) ? parsedReport : Object.values(parsedReport);
+if (report.length !== 1 || !Array.isArray(report[0]?.files)) {
   throw new Error('npm pack returned an unexpected JSON report');
 }
 

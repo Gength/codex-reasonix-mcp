@@ -270,6 +270,7 @@ else process.exitCode = 2;
         reasonixCommand: process.execPath,
         reasonixArgs: [executable],
         networkEnabled: true,
+        allowUnsandboxed: true,
       }),
       { codexConfigPath },
     );
@@ -290,6 +291,10 @@ else process.exitCode = 2;
     );
     expect(report.checks.find((check) => check.name === 'network_default')).toMatchObject({
       ok: false,
+    });
+    expect(report.checks.find((check) => check.name === 'command_sandbox')).toMatchObject({
+      ok: true,
+      detail: 'Command sandbox bypassed by CODEX_REASONIX_ALLOW_UNSANDBOXED=true',
     });
     expect(report.deep).toBeUndefined();
   });

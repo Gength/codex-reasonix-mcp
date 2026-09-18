@@ -136,4 +136,15 @@ describe('worker lane posture', () => {
     ).toBeUndefined();
     expect(fastLaneSessionViolation(task('deep'), update)).toBeUndefined();
   });
+
+  it('does not treat tool result descriptions as forbidden fast-lane execution', () => {
+    expect(
+      fastLaneSessionViolation(task('fast'), {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'call-1',
+        status: 'completed',
+        content: [{ text: 'Available capability: isolated subagent review skill' }],
+      }),
+    ).toBeUndefined();
+  });
 });

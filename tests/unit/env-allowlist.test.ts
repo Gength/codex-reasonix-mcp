@@ -25,6 +25,8 @@ describe('buildReasonixEnvironment', () => {
       {
         PATH: '/usr/bin:/bin',
         HOME: '/home/user',
+        USER: 'worker-user',
+        LOGNAME: 'worker-user',
         CODEX_HOME: '/home/user/.codex',
         LANG: 'en_US.UTF-8',
         ANTHROPIC_API_KEY: 'sk-ant-secret',
@@ -36,6 +38,8 @@ describe('buildReasonixEnvironment', () => {
         const env = buildReasonixEnvironment(loadConfig({}));
         expect(env.PATH).toBe('/usr/bin:/bin');
         expect(env.HOME).toBe('/home/user');
+        expect(env.USER).toBe('worker-user');
+        expect(env.LOGNAME).toBe('worker-user');
         expect(env.CODEX_HOME).toBe('/home/user/.codex');
         expect(env.LANG).toBe('en_US.UTF-8');
         expect(env.ANTHROPIC_API_KEY).toBeUndefined();

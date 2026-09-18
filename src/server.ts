@@ -78,8 +78,8 @@ export function createMcpServer(runtime: BridgeRuntime): McpServer {
   // Return an empty inventory instead of making the whole server fail with
   // Method not found.
   server.server.registerCapabilities({ resources: { listChanged: false } });
-  server.server.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: [] }));
-  server.server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
+  server.server.setRequestHandler(ListResourcesRequestSchema, () => ({ resources: [] }));
+  server.server.setRequestHandler(ListResourceTemplatesRequestSchema, () => ({
     resourceTemplates: [],
   }));
 

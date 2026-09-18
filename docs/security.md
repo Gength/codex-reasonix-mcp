@@ -17,6 +17,12 @@ Structured edits are allowed only when every resolved path is inside
 `write_scope`, outside `forbidden_scope`, and not a Git-control or credential
 path. Symlink escapes fail closed.
 
+Reasonix 1.38 delegates structured writes through ACP `fs/write_text_file`. The
+bridge advertises only the client write capability (not client reads or a terminal),
+canonicalizes both requested and resolved paths, applies the same scope and sensitive-path
+rules, checks source ownership before and after mutation, and immediately runs the normal
+repository postflight scan.
+
 Shell approval requires trusted private `_meta.reasonix.io` static argv v1
 metadata whose argv/cwd agree with the ACP subject and whose cwd resolves inside
 the worker worktree. Policy precedence is:
@@ -56,10 +62,11 @@ Posture (fail closed):
   `~/.codex`, `~/.netrc`, `~/.npmrc`, `~/.yarnrc`, `~/.gitconfig`, `/root`);
 - the **worktree is writable**; `/tmp` is private and writable;
 - a **minimal sanitized environment** (see next section);
-- if no sandbox engine is available (bubblewrap on Linux, seatbelt on macOS),
-  execution is **refused** (`sandbox_unavailable`) unless the explicit
-  `CODEX_REASONIX_ALLOW_UNSANDBOXED=true` escape hatch is set (documented
-  unsafe; hooks are never allowed unsandboxed).
+- execution is **refused** (`sandbox_unavailable`) if no sandbox engine is
+  available (bubblewrap on Linux, seatbelt on macOS). Setting the explicit
+  `CODEX_REASONIX_ALLOW_UNSANDBOXED=true` escape hatch bypasses sandbox
+  detection and execution entirely (documented unsafe; hooks are never allowed
+  unsandboxed).
 
 The Linux fallback blocks socket, socket-operation, and io_uring syscalls with
 seccomp while keeping the mount/user/pid isolation. It does not hide host

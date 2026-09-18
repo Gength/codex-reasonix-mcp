@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildBwrapArgv,
@@ -191,14 +191,20 @@ describe('runSandboxed', () => {
 
   it('runs the command unsandboxed when the explicit escape hatch is set', async () => {
     const worktree = await mkdtemp(path.join(os.tmpdir(), 'reasonix-sandbox-hatch-'));
+    const detect = vi.fn(() => ({
+      available: true as const,
+      engine: 'bubblewrap' as const,
+      networkIsolation: 'namespace' as const,
+    }));
     const result = await runSandboxed(
       { worktree, argv: ['/bin/echo', 'plain'], cwd: worktree },
       true,
-      () => ({ available: false, engine: null, reason: 'no engine for test' }),
+      detect,
     );
     expect(result.exitCode).toBe(0);
     expect(result.stdout.trim()).toBe('plain');
     expect(result.argv[0]).toBe('/bin/echo');
+    expect(detect).not.toHaveBeenCalled();
   });
 
   it.skipIf(process.platform !== 'linux' || process.arch !== 'x64')(

@@ -108,6 +108,35 @@ describe('Reasonix status usage compatibility', () => {
     expect(statusToUsage(parsed)).not.toHaveProperty('totalTokens');
   });
 
+  it('accepts Reasonix adaptive effort as an explicit effective value', () => {
+    const parsed = reasonixStatusSchema.parse(v1190Status({ effort: 'auto' }));
+    expect(parsed.effort).toBe('auto');
+  });
+
+  it('accepts an explicitly disabled Reasonix bash sandbox status', () => {
+    const parsed = reasonixStatusSchema.parse(
+      v1190Status({
+        sandbox: {
+          mode: 'off',
+          engine: 'none',
+          available: true,
+          workspaceRoot: '/tmp/worktree',
+          writeRoots: ['/tmp/worktree'],
+          networkEnabled: true,
+        },
+      }),
+    );
+    expect(parsed.sandbox).toMatchObject({ mode: 'off', engine: 'none' });
+  });
+
+  it('accepts additive Reasonix goal progress telemetry', () => {
+    const parsed = reasonixStatusSchema.parse(
+      v1190Status({ goal: { status: 'running', objective: 'fixture', progress: 0.5 } }),
+    );
+    expect(parsed.goal.status).toBe('running');
+    expect(parsed.goal.progress).toBe(0.5);
+  });
+
   it.each([
     ['turn', 'yes'],
     ['cumulative', 1],

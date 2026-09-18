@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { REASONING_EFFORTS } from './types.js';
+import { EFFECTIVE_REASONING_EFFORTS } from './types.js';
 
 export const REASONIX_STATUS_METHOD = '_reasonix.io/session/status';
 export const REASONIX_STATUS_UPDATE_METHOD = '_reasonix.io/session/status_update';
@@ -36,7 +36,7 @@ export const reasonixStatusSchema = z
     sessionId: z.string().min(1),
     state: z.enum(['running', 'idle']),
     model: z.string().min(1),
-    effort: z.enum(REASONING_EFFORTS),
+    effort: z.enum(EFFECTIVE_REASONING_EFFORTS),
     mode: z.enum(['normal', 'plan', 'goal']),
     workMode: z.enum(['economy', 'balanced', 'delivery']),
     plannerMode: z.enum(['off', 'on']),
@@ -45,7 +45,9 @@ export const reasonixStatusSchema = z
         status: z.enum(['none', 'running', 'complete', 'blocked', 'failed', 'cancelled']),
         objective: z.string().optional(),
       })
-      .strict(),
+      // Reasonix 1.38 adds goal progress telemetry without bumping the vendor
+      // status schema version. Preserve known safety fields and ignore extras.
+      .passthrough(),
     phase: z.string().min(1),
     turnOutcome: z
       .object({
@@ -62,8 +64,8 @@ export const reasonixStatusSchema = z
       .strict(),
     sandbox: z
       .object({
-        mode: z.literal('enforce'),
-        engine: z.enum(['bubblewrap', 'seatbelt']),
+        mode: z.enum(['off', 'enforce']),
+        engine: z.enum(['none', 'bubblewrap', 'seatbelt']),
         available: z.boolean(),
         workspaceRoot: z.string().min(1),
         writeRoots: z.array(z.string()),

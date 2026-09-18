@@ -417,7 +417,7 @@ describe('private persistent state', () => {
         name: 'invalid effective effort',
         mutate: (state) =>
           void ((state.executionProfile as Record<string, unknown>).effectiveReasoningEffort =
-            'auto'),
+            'extreme'),
       },
       {
         name: 'execution timeout below minimum',

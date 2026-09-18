@@ -337,14 +337,20 @@ const app = acp
       session.sequence += 1;
       return { stopReason: 'cancelled' };
     }
-    if (fakeSubdir) await mkdir(path.join(session.cwd, fakeSubdir), { recursive: true });
-    await writeFile(
-      resultPath(session.cwd),
+    const result =
       fakeMode === 'trailing-space' && session.promptCount === 1
         ? 'offline result \n'
-        : 'offline result\n',
-      'utf8',
-    );
+        : 'offline result\n';
+    if (fakeMode === 'client-fs') {
+      await client.request(acp.methods.client.fs.writeTextFile, {
+        sessionId: params.sessionId,
+        path: resultPath(session.cwd),
+        content: result,
+      });
+    } else {
+      if (fakeSubdir) await mkdir(path.join(session.cwd, fakeSubdir), { recursive: true });
+      await writeFile(resultPath(session.cwd), result, 'utf8');
+    }
     if (fakeMode === 'fail-after-edit') {
       session.running = false;
       session.failed = true;

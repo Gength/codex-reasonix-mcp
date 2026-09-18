@@ -11,6 +11,7 @@ import { INSPECT_SECTIONS } from './runtime.js';
 import {
   MAX_EXECUTION_TIMEOUT_SECONDS,
   MIN_EXECUTION_TIMEOUT_SECONDS,
+  EFFECTIVE_REASONING_EFFORTS,
   REASONING_EFFORTS,
   TASK_STATUSES,
   WIRE_REASONING_EFFORTS,
@@ -248,7 +249,7 @@ const taskViewSchema = z
     worktree: z.string().min(1),
     worker_lane: z.enum(WORKER_LANES),
     requested_reasoning_effort: z.enum(REASONING_EFFORTS),
-    effective_reasoning_effort: z.enum(REASONING_EFFORTS),
+    effective_reasoning_effort: z.enum(EFFECTIVE_REASONING_EFFORTS),
     execution_timeout_seconds: z
       .number()
       .int()

@@ -13,6 +13,8 @@ import type {
   RequestPermissionResponse,
   SessionConfigOption,
   SessionNotification,
+  WriteTextFileRequest,
+  WriteTextFileResponse,
 } from '@agentclientprotocol/sdk';
 
 import type { BridgeConfig } from './config.js';
@@ -39,6 +41,7 @@ import { VERSION } from './version.js';
 
 export interface ReasonixCallbacks {
   onPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse>;
+  onWriteTextFile(params: WriteTextFileRequest): Promise<WriteTextFileResponse>;
   onSessionUpdate(notification: SessionNotification): Promise<void> | void;
   onStatusUpdate(update: ReasonixStatusUpdate): Promise<void> | void;
   onPromptComplete(
@@ -112,6 +115,14 @@ export function desiredEffort(
     throw new BridgeError(
       'reasonix_incompatible',
       'Reasonix did not advertise reasoning effort selection',
+      {
+        availableOptions: options.map((option) => ({
+          id: option.id,
+          category: option.category,
+          type: option.type,
+          values: flattenOptions(option).map((item) => item.value),
+        })),
+      },
     );
   }
   const values = flattenOptions(selector).map((item) => item.value);
@@ -131,6 +142,10 @@ export function desiredEffort(
 const REASONIX_SYSTEM_ENV_KEYS = [
   'PATH',
   'HOME',
+  // Statically linked Go binaries use USER/LOGNAME when os/user cannot use cgo.
+  // Reasonix needs these to resolve the current OS user while opening a session.
+  'USER',
+  'LOGNAME',
   'CODEX_HOME',
   'LANG',
   'LANGUAGE',
@@ -204,7 +219,7 @@ export function assertReasonixEffort(
   status: ReasonixStatus,
   requestedEffort: ReasoningEffort,
 ): void {
-  if (status.effort !== requestedEffort) {
+  if (status.effort !== 'auto' && status.effort !== requestedEffort) {
     throw new BridgeError(
       'reasonix_incompatible',
       'Reasonix effective reasoning effort changed unexpectedly',
@@ -314,7 +329,7 @@ export class ReasonixProcess {
       config.networkEnabled ? 'on' : 'off',
       '--workspace-only',
       '--sandbox-bash',
-      'enforce',
+      config.sandboxBash,
     ];
     let child: ChildProcessWithoutNullStreams;
     try {
@@ -337,6 +352,10 @@ export class ReasonixProcess {
       .onRequest(
         acp.methods.client.session.requestPermission,
         async ({ params }) => await callbacks.onPermission(params),
+      )
+      .onRequest(
+        acp.methods.client.fs.writeTextFile,
+        async ({ params }) => await callbacks.onWriteTextFile(params),
       )
       .onNotification(acp.methods.client.session.update, async ({ params }) => {
         await callbacks.onSessionUpdate(params);
@@ -366,7 +385,10 @@ export class ReasonixProcess {
       initialized = await connection.agent.request(acp.methods.agent.initialize, {
         protocolVersion: acp.PROTOCOL_VERSION,
         clientInfo: { name: 'codex-reasonix-mcp', version: VERSION },
-        clientCapabilities: {},
+        // Reasonix >=1.38 delegates structured file writes to the ACP client.
+        // Without this capability it rejects edits before requestPermission,
+        // even when the session worktree itself is writable.
+        clientCapabilities: { fs: { writeTextFile: true } },
       });
     } catch (error) {
       child.kill('SIGTERM');
@@ -446,7 +468,12 @@ export class ReasonixProcess {
 
   private async rejectEffortDrift(update: ReasonixStatusUpdate): Promise<boolean> {
     const runtime = this.sessions.get(update.sessionId);
-    if (!runtime || update.status.effort === runtime.requestedEffort) return false;
+    if (
+      !runtime ||
+      update.status.effort === 'auto' ||
+      update.status.effort === runtime.requestedEffort
+    )
+      return false;
     const error = new BridgeError(
       'reasonix_incompatible',
       'Reasonix effective reasoning effort changed unexpectedly',
@@ -483,12 +510,31 @@ export class ReasonixProcess {
     let options = response.configOptions ?? [];
     const model = desiredModel(options, this.config.model);
     options = await this.setSelect(response.sessionId, 'model', model);
-    const effort = desiredEffort(options, requestedEffort);
-    await this.setSelect(response.sessionId, effort.configId, effort.value);
-    // fast lane: Reasonix economy + normal session; deep lane: delivery + Goal.
-    const workMode = workerLane === 'fast' ? 'economy' : 'delivery';
+    const qualityFloor = findOption(options, 'work_mode');
+    const effortSelector = findOption(options, 'effort') ?? findOption(options, 'thought_level');
+    if (effortSelector) {
+      const effort = desiredEffort(options, requestedEffort);
+      await this.setSelect(response.sessionId, effort.configId, effort.value);
+    } else if (
+      qualityFloor?.id !== 'quality_floor' ||
+      !['standard', 'delivery'].every((value) =>
+        flattenOptions(qualityFloor).some((item) => item.value === value),
+      )
+    ) {
+      desiredEffort(options, requestedEffort);
+    }
+    // Legacy: fast=economy, deep=delivery. Reasonix >=1.38 uses a
+    // standard/delivery quality floor and no separate effort selector.
+    const workMode =
+      qualityFloor?.id === 'quality_floor'
+        ? workerLane === 'fast'
+          ? 'standard'
+          : 'delivery'
+        : workerLane === 'fast'
+          ? 'economy'
+          : 'delivery';
     const modeId = workerLane === 'fast' ? 'normal' : 'goal';
-    options = await this.setSelect(response.sessionId, 'work_mode', workMode);
+    options = await this.setSelect(response.sessionId, qualityFloor?.id ?? 'work_mode', workMode);
     const approval = findOption(options, 'tool_approval');
     if (!approval || !flattenOptions(approval).some((item) => item.value === 'ask')) {
       throw new BridgeError('reasonix_incompatible', 'Reasonix tool_approval=ask is unavailable');
@@ -538,6 +584,12 @@ export class ReasonixProcess {
       status.model === this.config.model || status.model.endsWith(`/${this.config.model}`);
     assertReasonixEffort(status, requestedEffort);
     const expectedEngine = process.platform === 'darwin' ? 'seatbelt' : 'bubblewrap';
+    const sandboxMatches =
+      status.sandbox.available &&
+      ((status.sandbox.mode === 'enforce' && status.sandbox.engine === expectedEngine) ||
+        (this.config.sandboxBash === 'auto' &&
+          status.sandbox.mode === 'off' &&
+          status.sandbox.engine === 'none'));
     if (
       status.plannerMode !== 'off' ||
       !laneWorkMode(status.workMode, workerLane) ||
@@ -546,9 +598,7 @@ export class ReasonixProcess {
       canonicalStatusRoot !== canonicalWorktree ||
       roots.length !== 1 ||
       roots[0] !== canonicalWorktree ||
-      status.sandbox.mode !== 'enforce' ||
-      status.sandbox.engine !== expectedEngine ||
-      !status.sandbox.available ||
+      !sandboxMatches ||
       status.sandbox.networkEnabled !== networkEnabled
     ) {
       throw new BridgeError(

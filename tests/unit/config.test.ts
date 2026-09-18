@@ -10,6 +10,7 @@ const original = {
   scanner: process.env.CODEX_REASONIX_SECRET_SCANNER_ARGV,
   network: process.env.CODEX_REASONIX_NETWORK,
   effort: process.env.CODEX_REASONIX_EFFORT,
+  sandboxBash: process.env.CODEX_REASONIX_SANDBOX_BASH,
 };
 
 afterEach(() => {
@@ -19,6 +20,7 @@ afterEach(() => {
     CODEX_REASONIX_SECRET_SCANNER_ARGV: original.scanner,
     CODEX_REASONIX_NETWORK: original.network,
     CODEX_REASONIX_EFFORT: original.effort,
+    CODEX_REASONIX_SANDBOX_BASH: original.sandboxBash,
   })) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -68,6 +70,18 @@ describe('configuration parsing', () => {
     expect(loadConfig({ reasoningEffort: 'low' }).reasoningEffort).toBe('low');
   });
 
+  it('defaults the Reasonix bash sandbox to enforce and accepts explicit auto mode', () => {
+    delete process.env.CODEX_REASONIX_SANDBOX_BASH;
+    expect(loadConfig().sandboxBash).toBe('enforce');
+    process.env.CODEX_REASONIX_SANDBOX_BASH = 'auto';
+    expect(loadConfig().sandboxBash).toBe('auto');
+  });
+
+  it('rejects unsupported Reasonix bash sandbox modes', () => {
+    process.env.CODEX_REASONIX_SANDBOX_BASH = 'off';
+    expect(() => loadConfig()).toThrow(/CODEX_REASONIX_SANDBOX_BASH must be one of/);
+  });
+
   it.each(['tiny', 'MAX', 'medium-high'])('rejects unsupported Reasonix effort %s', (effort) => {
     process.env.CODEX_REASONIX_EFFORT = effort;
     expect(() => loadConfig()).toThrow(/CODEX_REASONIX_EFFORT must be one of/);
@@ -86,5 +100,6 @@ describe('configuration parsing', () => {
     expect(configFingerprint(base)).toBe(configFingerprint({ ...base, stateDir: '/tmp/b' }));
     expect(configFingerprint(base)).toBe(configFingerprint({ ...base, reasoningEffort: 'high' }));
     expect(configFingerprint(base)).not.toBe(configFingerprint({ ...base, model: 'different' }));
+    expect(configFingerprint(base)).not.toBe(configFingerprint({ ...base, sandboxBash: 'auto' }));
   });
 });

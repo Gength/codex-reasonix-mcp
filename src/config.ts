@@ -14,6 +14,8 @@ export interface BridgeConfig {
   reasoningEffort: ReasoningEffort;
   profile: 'delivery';
   networkEnabled: boolean;
+  /** Reasonix bash sandbox posture. `auto` honors the user's Reasonix config. */
+  sandboxBash: 'auto' | 'enforce';
   externalSecretScanner?: readonly [string, ...string[]];
   maxInspectBytes: number;
   maxBinaryBytes: number;
@@ -21,7 +23,7 @@ export interface BridgeConfig {
   leaseHeartbeatMs: number;
   /** Run repository Git hooks (pre-commit/prepare-commit-msg/commit-msg) through the command sandbox. Off by default. */
   runGitHooks: boolean;
-  /** Explicit escape hatch: run verification/scanner/hooks without an OS sandbox when none is available. */
+  /** Explicit escape hatch: bypass the OS command sandbox for verification/scanners. */
   allowUnsandboxed: boolean;
   /** Glob patterns (CODEX_REASONIX_ENV_ALLOWLIST) for env vars passed to the Reasonix child beyond the system baseline. */
   envAllowlist: string[];
@@ -36,6 +38,17 @@ function parseReasoningEffort(value: string | undefined): ReasoningEffort {
     );
   }
   return effort as ReasoningEffort;
+}
+
+function parseSandboxBash(value: string | undefined): BridgeConfig['sandboxBash'] {
+  const mode = value?.trim() || 'enforce';
+  if (mode !== 'auto' && mode !== 'enforce') {
+    throw new BridgeError(
+      'invalid_request',
+      'CODEX_REASONIX_SANDBOX_BASH must be one of: auto, enforce',
+    );
+  }
+  return mode;
 }
 
 function defaultStateDir(): string {
@@ -89,6 +102,7 @@ export function loadConfig(overrides: Partial<BridgeConfig> = {}): BridgeConfig 
     reasoningEffort: parseReasoningEffort(process.env.CODEX_REASONIX_EFFORT),
     profile: 'delivery',
     networkEnabled: process.env.CODEX_REASONIX_NETWORK === 'on',
+    sandboxBash: parseSandboxBash(process.env.CODEX_REASONIX_SANDBOX_BASH),
     externalSecretScanner: parseScanner(process.env.CODEX_REASONIX_SECRET_SCANNER_ARGV),
     maxInspectBytes: 64 * 1024,
     maxBinaryBytes: 10 * 1024 * 1024,
@@ -108,6 +122,7 @@ export function configFingerprint(config: BridgeConfig): string {
     model: config.model,
     profile: config.profile,
     network: config.networkEnabled,
+    sandboxBash: config.sandboxBash,
     envAllowlist: config.envAllowlist,
   });
   return createHash('sha256').update(stable).digest('hex').slice(0, 24);

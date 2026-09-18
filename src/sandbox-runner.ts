@@ -360,27 +360,27 @@ export function resetSandboxCache(): void {
 }
 
 /**
- * Run a repository-content command inside the OS sandbox. Fails closed with
- * `sandbox_unavailable` when no engine is present, unless `allowUnsandboxed`
- * is explicitly set (documented unsafe escape hatch).
+ * Run a repository-content command inside the OS sandbox. The explicit
+ * `allowUnsandboxed` escape hatch bypasses sandbox detection and execution;
+ * otherwise the function fails closed when no engine is available.
  */
 export async function runSandboxed(
   options: SandboxedCommandOptions,
   allowUnsandboxed: boolean,
   detect: () => Promise<SandboxStatus> | SandboxStatus = detectSandbox,
 ): Promise<CommandResult> {
+  if (allowUnsandboxed) {
+    return await runCommand({
+      argv: options.argv,
+      cwd: options.cwd,
+      timeoutMs: options.timeoutMs,
+      maxOutputBytes: options.maxOutputBytes,
+      env: options.env,
+      signal: options.signal,
+    });
+  }
   const status = await detect();
   if (!status.available) {
-    if (allowUnsandboxed) {
-      return await runCommand({
-        argv: options.argv,
-        cwd: options.cwd,
-        timeoutMs: options.timeoutMs,
-        maxOutputBytes: options.maxOutputBytes,
-        env: options.env,
-        signal: options.signal,
-      });
-    }
     throw new BridgeError(
       'sandbox_unavailable',
       `Command sandbox is unavailable (${status.reason ?? status.engine ?? 'no engine'}); ` +

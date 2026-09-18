@@ -335,6 +335,29 @@ describe('offline Codex -> Reasonix -> Codex flow', () => {
     expect(controlCalls.mock.calls.some(([call]) => call.action === 'steer')).toBe(false);
   });
 
+  it('advertises and supervises ACP client filesystem writes', async () => {
+    const repository = await createGitRepository();
+    const runtime = await runtimeFixture({
+      reasonixArgs: [path.resolve('tests/fixtures/fake-reasonix.ts'), '--fake-mode=client-fs'],
+    });
+    const delegated = await runtime.delegate(
+      { task_id: 'client-fs-write', contract: contractFixture(), worker_lane: 'fast' },
+      sandboxMeta(repository),
+    );
+    expect(delegated).toMatchObject({
+      state: 'review_required',
+      changed_files: ['result.txt'],
+    });
+    const task = await runtime.store.loadTask('client-fs-write');
+    await expect(readFile(path.join(task.worktree, 'result.txt'), 'utf8')).resolves.toBe(
+      'offline result\n',
+    );
+    const events = await runtime.store.readEvents(task.taskId);
+    const writeEvent = events.find((event) => event.type === 'client_fs_write_completed');
+    expect(writeEvent).toBeDefined();
+    expect(writeEvent?.data).toMatchObject({ path: 'result.txt' });
+  });
+
   it('hands the worker an allowlisted environment instead of the full host env', async () => {
     const repository = await createGitRepository();
     const runtime = await runtimeFixture({

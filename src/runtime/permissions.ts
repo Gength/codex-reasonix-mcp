@@ -1,8 +1,16 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir, open, realpath, rename, stat, unlink } from 'node:fs/promises';
+import path from 'node:path';
 
-import type { RequestPermissionRequest, RequestPermissionResponse } from '@agentclientprotocol/sdk';
+import type {
+  RequestPermissionRequest,
+  RequestPermissionResponse,
+  WriteTextFileRequest,
+  WriteTextFileResponse,
+} from '@agentclientprotocol/sdk';
 
 import type { BridgeConfig } from '../config.js';
+import { assertPathInsideWorktree, isWriteAllowed, normalizeRepositoryPath } from '../contracts.js';
 import { BridgeError } from '../errors.js';
 import { canTransition, enterPaused, transitionTask } from '../lifecycle.js';
 import { decidePermission } from '../policy.js';
@@ -13,7 +21,9 @@ import {
   assertNoWorkerCommits,
   changedFiles,
 } from '../repository.js';
+import { isRuntimeMetadataPath } from '../runtime-metadata.js';
 import { scanWorkingFiles } from '../security.js';
+import { isCredentialPath, isGitControlPath } from '../sensitive-paths.js';
 import type { StateStore } from '../state.js';
 import type { InteractionRecord, TaskRecord } from '../types.js';
 import type { ControlInput } from './api.js';
@@ -38,6 +48,7 @@ export interface PermissionDependencies {
 
 export interface PermissionAccess {
   onPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse>;
+  writeTextFile(params: WriteTextFileRequest): Promise<WriteTextFileResponse>;
   onToolCallUpdate(
     taskId: string,
     toolCallId: string,
@@ -50,6 +61,34 @@ export interface PermissionAccess {
   ): Promise<Record<string, unknown>>;
   cancelTaskInteractions(taskId: string): void;
   cancelAllInteractions(): void;
+}
+
+async function atomicWriteTextFile(file: string, content: string): Promise<void> {
+  const parent = path.dirname(file);
+  await mkdir(parent, { recursive: true });
+  let mode = 0o644;
+  try {
+    const info = await stat(file);
+    if (!info.isFile()) throw new BridgeError('scope_violation', 'ACP write target is not a file');
+    mode = info.mode & 0o777;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  const temporary = path.join(parent, `.${path.basename(file)}.${randomUUID()}.tmp`);
+  let handle;
+  try {
+    handle = await open(temporary, 'wx', mode);
+    await handle.writeFile(content, 'utf8');
+    await handle.sync();
+    await handle.close();
+    handle = undefined;
+    await rename(temporary, file);
+  } finally {
+    await handle?.close().catch(() => undefined);
+    await unlink(temporary).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+    });
+  }
 }
 
 interface ActiveCommand {
@@ -276,6 +315,50 @@ export class PermissionController implements PermissionAccess {
       throw error;
     }
     return await response;
+  }
+
+  async writeTextFile(params: WriteTextFileRequest): Promise<WriteTextFileResponse> {
+    const taskId = this.dependencies.taskIdForSession(params.sessionId);
+    if (!taskId) throw new BridgeError('invalid_state', 'Unknown Reasonix ACP session');
+    const task = await this.dependencies.store.loadTask(taskId);
+    if (task.status !== 'running') {
+      throw new BridgeError('invalid_state', 'ACP file writes require a running delegated task');
+    }
+    if (!path.isAbsolute(params.path)) {
+      throw new BridgeError('scope_violation', 'ACP file write path must be absolute');
+    }
+
+    const root = await realpath(task.worktree);
+    const relative = path.relative(root, path.resolve(params.path)).replaceAll('\\', '/');
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new BridgeError('scope_violation', 'ACP file write escapes the isolated worktree');
+    }
+    const requested = normalizeRepositoryPath(relative);
+    const canonical = await assertPathInsideWorktree(root, requested);
+    for (const candidate of new Set([requested, canonical])) {
+      if (
+        !isWriteAllowed(task.contract, candidate) ||
+        isRuntimeMetadataPath(candidate) ||
+        isGitControlPath(candidate) ||
+        isCredentialPath(candidate)
+      ) {
+        throw new BridgeError('scope_violation', 'ACP file write falls outside write_scope', {
+          path: candidate,
+        });
+      }
+    }
+
+    await this.dependencies.collision.guardTask(taskId, 'before_worker_mutation');
+    const absolute = path.join(root, ...canonical.split('/'));
+    await atomicWriteTextFile(absolute, params.content);
+    await this.dependencies.collision.guardTask(taskId, 'after_worker_mutation');
+    const files = await scanTaskAfterCommand(task, this.dependencies.config);
+    await this.dependencies.store.recordEvent(taskId, 'client_fs_write_completed', {
+      path: canonical,
+      bytes: Buffer.byteLength(params.content, 'utf8'),
+      changedFiles: files,
+    });
+    return {};
   }
 
   async onToolCallUpdate(

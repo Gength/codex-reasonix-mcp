@@ -30,6 +30,11 @@ export const REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'max'] as 
 
 export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 
+/** Values Reasonix may report after session negotiation. */
+export const EFFECTIVE_REASONING_EFFORTS = [...REASONING_EFFORTS, 'auto'] as const;
+
+export type EffectiveReasoningEffort = (typeof EFFECTIVE_REASONING_EFFORTS)[number];
+
 /** Effort values accepted by the wire schema and new configuration; `minimal` is legacy-only. */
 export const WIRE_REASONING_EFFORTS = ['low', 'medium', 'high', 'max'] as const;
 
@@ -47,7 +52,7 @@ export const MAX_EXECUTION_TIMEOUT_SECONDS = 14_400;
 
 export interface ExecutionProfile {
   requestedReasoningEffort: ReasoningEffort;
-  effectiveReasoningEffort: ReasoningEffort;
+  effectiveReasoningEffort: EffectiveReasoningEffort;
   executionTimeoutSeconds: number;
   workerLane: WorkerLane;
 }
