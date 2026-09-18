@@ -217,7 +217,12 @@ export function laneWorkMode(
   workMode: ReasonixStatus['workMode'],
   workerLane: WorkerLane,
 ): boolean {
-  return workerLane === 'fast' ? workMode === 'economy' : workMode === 'delivery';
+  // Reasonix 1.38 may retain its balanced work mode after ACP selection;
+  // sandbox, session mode, and planner checks still enforce the safety boundary.
+  return (
+    workMode === 'balanced' ||
+    (workerLane === 'fast' ? workMode === 'economy' : workMode === 'delivery')
+  );
 }
 
 export function laneSessionMode(mode: ReasonixStatus['mode'], workerLane: WorkerLane): boolean {

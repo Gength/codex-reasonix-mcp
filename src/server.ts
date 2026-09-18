@@ -1,5 +1,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import {
+  ListResourceTemplatesRequestSchema,
+  ListResourcesRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
 import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
 import type { ServerNotification, ServerRequest } from '@modelcontextprotocol/sdk/types.js';
 
@@ -69,6 +73,15 @@ export function createMcpServer(runtime: BridgeRuntime): McpServer {
         'Use Reasonix only after explicit user approval. Tools: reasonix_delegate creates or resumes work, reasonix_control finalizes or recovers it, and reasonix_inspect is recovery-only. Default happy path: one reasonix_delegate waits for review, then one reasonix_control(finalize) waits for the commit; do not poll or steer. For trivial edits with already-verified local context, use one focused preflight and do not perform exploratory docs or memory lookup solely to construct the contract. write_scope is already an exclusive allowlist; never add a catch-all forbidden_scope that overlaps its concrete target. New tasks default to worker_lane=fast (direct edits, no Goal/AutoResearch/subagents); use deep only for long-horizon work. Choose the lowest adequate reasoning_effort (low is lowest) and a proportionate execution_timeout_seconds. A delegate wait timeout does not cancel the worker. Copy required_review_criteria into approved_review_criteria, review_revision into expected_review_revision, and review_tree_hash into expected_review_tree_hash for finalize. Delegate/finalize require codex/sandbox-state-meta. If finalize fails, keep the task at review, inspect/repair there, and finalize again with the new snapshot; never copy the diff manually into the source checkout or close the task. A completed task returns an isolated commit; cherry-pick it explicitly after review. Never push, merge, or publish.',
     },
   );
+
+  // Codex probes resources during MCP startup even when none are advertised.
+  // Return an empty inventory instead of making the whole server fail with
+  // Method not found.
+  server.server.registerCapabilities({ resources: { listChanged: false } });
+  server.server.setRequestHandler(ListResourcesRequestSchema, async () => ({ resources: [] }));
+  server.server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
+    resourceTemplates: [],
+  }));
 
   server.registerTool(
     'reasonix_delegate',

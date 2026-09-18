@@ -5,6 +5,7 @@ import {
   assertReasonixEffort,
   cancelBestEffortThenComplete,
   desiredEffort,
+  laneWorkMode,
   supervisedWorkerPrompt,
 } from '../../src/acp.js';
 import { DEFAULT_EXECUTION_TIMEOUT_SECONDS, REASONING_EFFORTS } from '../../src/types.js';
@@ -45,6 +46,11 @@ describe('Reasonix ACP effort selection', () => {
     expect(() => assertReasonixEffort({ effort: 'high' } as ReasonixStatus, 'low')).toThrow(
       'Reasonix effective reasoning effort changed unexpectedly',
     );
+  });
+
+  it('accepts Reasonix balanced work mode for either bridge lane', () => {
+    expect(laneWorkMode('balanced', 'fast')).toBe(true);
+    expect(laneWorkMode('balanced', 'deep')).toBe(true);
   });
 });
 

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import process from 'node:process';
 
 import { BridgeError } from './errors.js';
@@ -9,6 +9,8 @@ export interface CommandOptions {
   timeoutMs?: number;
   maxOutputBytes?: number;
   env?: Readonly<Record<string, string>>;
+  /** File descriptors inherited at child fd 3 and above. */
+  passFds?: readonly number[];
   signal?: AbortSignal;
 }
 
@@ -76,14 +78,20 @@ export async function runCommand(options: CommandOptions): Promise<CommandResult
   const started = Date.now();
 
   return await new Promise<CommandResult>((resolve, reject) => {
+    const stdio = ['ignore', 'pipe', 'pipe', ...(options.passFds ?? [])] as [
+      'ignore',
+      'pipe',
+      'pipe',
+      ...number[],
+    ];
     const child = spawn(command, args, {
       cwd: options.cwd,
       detached: process.platform !== 'win32',
       env: sanitizedEnvironment(options.env),
       shell: false,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio,
       windowsHide: true,
-    });
+    }) as ChildProcessWithoutNullStreams;
 
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];

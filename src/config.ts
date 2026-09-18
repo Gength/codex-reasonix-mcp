@@ -28,7 +28,7 @@ export interface BridgeConfig {
 }
 
 function parseReasoningEffort(value: string | undefined): ReasoningEffort {
-  const effort = value?.trim() || 'medium';
+  const effort = value?.trim() || 'high';
   if (!(WIRE_REASONING_EFFORTS as readonly string[]).includes(effort)) {
     throw new BridgeError(
       'invalid_request',

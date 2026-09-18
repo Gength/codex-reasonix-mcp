@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildBwrapArgv,
+  buildNetworkSeccompFilter,
   buildSeatbeltProfile,
   detectSandbox,
   resolveCredentialOverlays,
@@ -61,6 +62,14 @@ describe('bwrap argv construction', () => {
       ]),
     );
     expect(argv[0]).toBe('bwrap');
+  });
+
+  it('builds a seccomp network fallback without sharing the host network', () => {
+    if (process.arch !== 'x64') return;
+    const argv = buildBwrapArgv(base, [], 'seccomp');
+    expect(argv).not.toContain('--unshare-net');
+    expect(argv).toEqual(expect.arrayContaining(['--seccomp', '3']));
+    expect(buildNetworkSeccompFilter().length).toBeGreaterThan(0);
   });
 
   it('hides credential dirs with tmpfs and files with /dev/null', () => {
@@ -192,6 +201,32 @@ describe('runSandboxed', () => {
     expect(result.argv[0]).toBe('/bin/echo');
   });
 
+  it.skipIf(process.platform !== 'linux' || process.arch !== 'x64')(
+    'blocks network syscalls when the host has no network namespace',
+    async () => {
+      const worktree = await mkdtemp(path.join(os.tmpdir(), 'reasonix-sandbox-seccomp-'));
+      try {
+        const result = await runSandboxed(
+          {
+            worktree,
+            argv: [
+              '/usr/bin/python3',
+              '-c',
+              "import errno,socket,sys\ntry: socket.socket(socket.AF_INET,socket.SOCK_STREAM)\nexcept OSError as error: print(error.errno); sys.exit(0 if error.errno == errno.EPERM else 1)\nprint('allowed'); sys.exit(1)",
+            ],
+            cwd: worktree,
+          },
+          false,
+          () => ({ available: true, engine: 'bubblewrap', networkIsolation: 'seccomp' }),
+        );
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe('1');
+      } finally {
+        await rm(worktree, { recursive: true, force: true });
+      }
+    },
+  );
+
   it.skipIf(!sandboxStatus.available)('runs a benign command inside the sandbox', async () => {
     const worktree = await mkdtemp(path.join(os.tmpdir(), 'reasonix-sandbox-run-'));
     const result = await runSandboxed(
@@ -230,27 +265,28 @@ describe('runSandboxed', () => {
     await expect(stat(path.join(root, 'escaped.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it.skipIf(!sandboxStatus.available || process.platform !== 'linux')(
-    'has no network inside the sandbox',
-    async () => {
-      const worktree = await mkdtemp(path.join(os.tmpdir(), 'reasonix-sandbox-net-'));
-      const result = await runSandboxed(
-        {
-          worktree,
-          argv: ['/bin/sh', '-c', 'cat /proc/net/dev'],
-          cwd: worktree,
-        },
-        false,
-      );
-      expect(result.exitCode).toBe(0);
-      const interfaces = result.stdout
-        .split('\n')
-        .slice(2) // skip the two /proc/net/dev header lines
-        .map((line) => line.trim().split(':')[0])
-        .filter((name) => name);
-      expect(interfaces).toEqual(['lo']);
-    },
-  );
+  it.skipIf(
+    !sandboxStatus.available ||
+      sandboxStatus.networkIsolation !== 'namespace' ||
+      process.platform !== 'linux',
+  )('has no network inside the sandbox', async () => {
+    const worktree = await mkdtemp(path.join(os.tmpdir(), 'reasonix-sandbox-net-'));
+    const result = await runSandboxed(
+      {
+        worktree,
+        argv: ['/bin/sh', '-c', 'cat /proc/net/dev'],
+        cwd: worktree,
+      },
+      false,
+    );
+    expect(result.exitCode).toBe(0);
+    const interfaces = result.stdout
+      .split('\n')
+      .slice(2) // skip the two /proc/net/dev header lines
+      .map((line) => line.trim().split(':')[0])
+      .filter((name) => name);
+    expect(interfaces).toEqual(['lo']);
+  });
 
   it.skipIf(!sandboxStatus.available || process.platform !== 'linux')(
     'leaves no descendant processes behind',

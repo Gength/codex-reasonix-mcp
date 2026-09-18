@@ -30,6 +30,7 @@ describe('TaskContractV1', () => {
     const second = parseTaskContract(JSON.parse(JSON.stringify(first)));
     expect(first.write_scope).toEqual(['src/**/*.ts']);
     expect(first.verification[0]?.cwd).toBe('.');
+    expect(JSON.stringify(first)).toBe(JSON.stringify(second));
     expect(contractHash(first)).toBe(contractHash(second));
     expect(canonicalContractJson(first)).toMatch(/"schema_version": 1/);
   });

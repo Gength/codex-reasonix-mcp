@@ -53,6 +53,17 @@ function withEstimatedUsage(): Record<string, unknown> {
   });
 }
 
+function withTotalTokens(): Record<string, unknown> {
+  const status = v1190Status();
+  const usage = status.usage as Record<string, Record<string, unknown>>;
+  return v1190Status({
+    usage: {
+      turn: { ...usage.turn, totalTokens: 15 },
+      cumulative: { ...usage.cumulative, totalTokens: 15 },
+    },
+  });
+}
+
 describe('Reasonix status usage compatibility', () => {
   it('accepts the Reasonix v1.19.0 payload without estimated metadata', () => {
     const parsed = reasonixStatusSchema.parse(v1190Status());
@@ -91,6 +102,12 @@ describe('Reasonix status usage compatibility', () => {
     expect(statusToUsage(parsed)).not.toHaveProperty('estimated');
   });
 
+  it('accepts Reasonix >= 1.38 aggregate totalTokens and projects it out', () => {
+    const parsed = reasonixStatusSchema.parse(withTotalTokens());
+    expect(parsed.usage.turn.totalTokens).toBe(15);
+    expect(statusToUsage(parsed)).not.toHaveProperty('totalTokens');
+  });
+
   it.each([
     ['turn', 'yes'],
     ['cumulative', 1],
@@ -119,19 +136,18 @@ describe('Reasonix status usage compatibility', () => {
     ).toThrow(/estimated/);
   });
 
-  it('preserves strict rejection of unknown fields', () => {
+  it('accepts additive usage telemetry but rejects unknown status fields', () => {
     const status = withEstimatedUsage();
     const usage = status.usage as Record<string, Record<string, unknown>>;
-    expect(() =>
-      reasonixStatusSchema.parse(
-        v1190Status({
-          usage: {
-            ...usage,
-            turn: { ...usage.turn, unknownCounter: 1 },
-          },
-        }),
-      ),
-    ).toThrow(/unknownCounter/);
+    const parsed = reasonixStatusSchema.parse(
+      v1190Status({
+        usage: {
+          ...usage,
+          turn: { ...usage.turn, unknownCounter: 1 },
+        },
+      }),
+    );
+    expect(parsed.usage.turn.unknownCounter).toBe(1);
     expect(() => reasonixStatusSchema.parse(v1190Status({ unknownStatus: true }))).toThrow(
       /unknownStatus/,
     );

@@ -11,6 +11,9 @@ const usageSchema = z
   .object({
     promptTokens: z.number().int().nonnegative(),
     completionTokens: z.number().int().nonnegative(),
+    // Reasonix >= 1.38 reports the aggregate token count in ACP status.
+    // UsageTotals intentionally keeps its existing canonical fields only.
+    totalTokens: z.number().int().nonnegative().optional(),
     reasoningTokens: z.number().int().nonnegative(),
     cacheHitTokens: z.number().int().nonnegative(),
     cacheMissTokens: z.number().int().nonnegative(),
@@ -22,7 +25,9 @@ const usageSchema = z
     // This compatibility-only metadata is projected out before persistence.
     estimated: z.boolean().optional(),
   })
-  .strict();
+  // Reasonix may add provider/cache telemetry without changing the bridge's
+  // canonical UsageTotals fields. Preserve known fields and ignore additions.
+  .passthrough();
 
 export const reasonixStatusSchema = z
   .object({

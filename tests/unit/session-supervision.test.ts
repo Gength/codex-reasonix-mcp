@@ -66,6 +66,12 @@ describe('worker lane posture', () => {
       ),
     ).toBeUndefined();
     expect(
+      laneViolation(
+        fast,
+        status({ goal: { status: 'none' }, mode: 'normal', workMode: 'balanced' }),
+      ),
+    ).toBeUndefined();
+    expect(
       laneViolation(fast, status({ goal: { status: 'none' }, mode: 'goal', workMode: 'economy' })),
     ).toMatch(/fast lane forbids session mode/);
     expect(
@@ -88,6 +94,12 @@ describe('worker lane posture', () => {
       laneViolation(
         deep,
         status({ goal: { status: 'running' }, mode: 'goal', workMode: 'delivery' }),
+      ),
+    ).toBeUndefined();
+    expect(
+      laneViolation(
+        deep,
+        status({ goal: { status: 'running' }, mode: 'goal', workMode: 'balanced' }),
       ),
     ).toBeUndefined();
     expect(

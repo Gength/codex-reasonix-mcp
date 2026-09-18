@@ -147,6 +147,8 @@ describe('stable MCP surface', () => {
         'reasonix_control',
         'reasonix_inspect',
       ]);
+      expect((await client.listResources()).resources).toEqual([]);
+      expect((await client.listResourceTemplates()).resourceTemplates).toEqual([]);
       expect(CODEX_0146_JSON_SCHEMA_SOURCE).toContain('e363b08c9175ac1cbe5893615dd2cb9ddf95043b');
       for (const tool of result.tools) {
         expect(() => assertCodex0146JsonSchema(tool.inputSchema)).not.toThrow();

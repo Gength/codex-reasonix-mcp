@@ -778,11 +778,13 @@ export async function runDoctor(
     required: true,
   });
   const sandbox = await detectSandbox();
+  const networkIsolation =
+    sandbox.networkIsolation ?? (sandbox.engine === 'seatbelt' ? 'seatbelt' : 'namespace');
   checks.push({
     name: 'command_sandbox',
     ok: sandbox.available,
     detail: sandbox.available
-      ? `Command sandbox engine: ${sandbox.engine} (verification / secret scanner / Git hooks)`
+      ? `Command sandbox engine: ${sandbox.engine} network=${networkIsolation} (verification / secret scanner / Git hooks)`
       : `Command sandbox unavailable: ${sandbox.reason ?? 'unknown'}`,
     required: true,
   });

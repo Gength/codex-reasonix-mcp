@@ -88,7 +88,9 @@ fingerprint and the task `worker_lane`; fast and deep tasks of one repository
 never share a Reasonix process. Tasks may share a process but never a branch,
 worktree, session, contract hash, or state.
 
-Fast-lane tasks run Reasonix in economy + normal session mode with planner off:
+Fast-lane tasks run Reasonix in economy + normal session mode with planner off;
+Reasonix versions that retain `balanced` after ACP selection are accepted as a
+compatible work-mode posture:
 the prompt is a direct edit instruction with no plan/todo and no worker-owned
 acceptance checks, and Goal, AutoResearch, review/task skills, or subagent
 signals fail the task fast. Deep-lane tasks keep Delivery + Goal continuation.

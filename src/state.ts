@@ -557,8 +557,12 @@ function parseTaskState(raw: string): {
     invalidState(`Unsupported task state schemaVersion: ${String(version)}`);
   }
   const isCurrent = version === TASK_RECORD_SCHEMA_VERSION;
-  const record = parseTaskRecordFields(state, isCurrent, version);
-  return { raw, state, record, needsMigration: !isCurrent };
+  // Key order is not part of the contract semantics. Older v4 records can
+  // have a valid canonical hash but a pre-canonical object insertion order;
+  // loadTask() rewrites those records through the normal migration path.
+  const record = parseTaskRecordFields(state, false, version);
+  const canonicalContract = JSON.stringify(record.contract) === JSON.stringify(state.contract);
+  return { raw, state, record, needsMigration: !isCurrent || !canonicalContract };
 }
 
 /** Validates a current persisted task record without performing migration. */

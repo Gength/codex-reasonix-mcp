@@ -49,7 +49,8 @@ inside an OS-level command sandbox (`SandboxedCommandRunner`,
 
 Posture (fail closed):
 
-- **network disabled** (network namespace isolation);
+- **network disabled** (network namespace isolation, or a seccomp deny-list
+  fallback on Linux hosts that prohibit network namespaces);
 - filesystem **read-only outside the worktree**, with per-user credential
   stores hidden from the sandbox (`~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config`,
   `~/.codex`, `~/.netrc`, `~/.npmrc`, `~/.yarnrc`, `~/.gitconfig`, `/root`);
@@ -59,6 +60,10 @@ Posture (fail closed):
   execution is **refused** (`sandbox_unavailable`) unless the explicit
   `CODEX_REASONIX_ALLOW_UNSANDBOXED=true` escape hatch is set (documented
   unsafe; hooks are never allowed unsandboxed).
+
+The Linux fallback blocks socket, socket-operation, and io_uring syscalls with
+seccomp while keeping the mount/user/pid isolation. It does not hide host
+network interfaces from `/proc`; a real network namespace remains preferred.
 
 Descendants cannot outlive a command: process-group kill plus the pid
 namespace of the sandbox reap background children on abort, timeout, or exit.
@@ -186,17 +191,17 @@ malicious Git hooks, environment exfiltration, network access from
 repository-controlled content, filesystem escape, crash inconsistency, stale
 review/pause tokens, and wrong-branch commits.
 
-| #   | Row                                                                                  | Gate                                          |
-| --- | ------------------------------------------------------------------------------------ | --------------------------------------------- |
-| R1  | Malicious verification source (credential read, sibling write, network, descendants) | sandbox + process-group/pid-namespace cleanup |
-| R2  | Malicious package script used as a verification command                              | sandbox                                       |
-| R3  | Malicious Git hook                                                                   | hooks off by default; sandboxed when enabled  |
-| R4  | Environment exfiltration                                                             | env allowlist + sanitized command env         |
-| R5  | Network access from verification/hook                                                | network namespace disabled                    |
-| R6  | Filesystem escape (write outside worktree)                                           | read-only fs + writable worktree only         |
-| R7  | Crash recovery (kill mid-transaction)                                                | pending-envelope journal transactions         |
-| R8  | Stale review / pause token                                                           | snapshot-bound approvals + pause tokens       |
-| R9  | Wrong Reasonix branch (prefix-valid)                                                 | exact task-branch ownership                   |
+| #   | Row                                                                                  | Gate                                           |
+| --- | ------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| R1  | Malicious verification source (credential read, sibling write, network, descendants) | sandbox + process-group/pid-namespace cleanup  |
+| R2  | Malicious package script used as a verification command                              | sandbox                                        |
+| R3  | Malicious Git hook                                                                   | hooks off by default; sandboxed when enabled   |
+| R4  | Environment exfiltration                                                             | env allowlist + sanitized command env          |
+| R5  | Network access from verification/hook                                                | network namespace or seccomp network deny-list |
+| R6  | Filesystem escape (write outside worktree)                                           | read-only fs + writable worktree only          |
+| R7  | Crash recovery (kill mid-transaction)                                                | pending-envelope journal transactions          |
+| R8  | Stale review / pause token                                                           | snapshot-bound approvals + pause tokens        |
+| R9  | Wrong Reasonix branch (prefix-valid)                                                 | exact task-branch ownership                    |
 
 Rows R1-R6 are exercised in `tests/e2e/sandbox-gates.test.ts` and
 `tests/e2e/security-matrix.test.ts`; R7 in `tests/unit/crash-recovery.test.ts`;

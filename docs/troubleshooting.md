@@ -62,8 +62,9 @@ recovery steer; it does not wait for a permission override.
 ## Sandbox metadata or platform failure
 
 Delegation/finalization require writable `codex/sandbox-state-meta`.
-`reasonix_inspect` remains read-only. Linux/WSL requires `bwrap`; macOS requires
-`/usr/bin/sandbox-exec`; native Windows requires WSL.
+`reasonix_inspect` remains read-only. Linux/WSL requires `bwrap`; when the host
+disables network namespaces, the bridge uses a seccomp network deny-list
+fallback. macOS requires `/usr/bin/sandbox-exec`; native Windows requires WSL.
 
 ## Dirty repository or source collision
 

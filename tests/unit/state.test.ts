@@ -501,8 +501,17 @@ describe('private persistent state', () => {
       const raw = variant.raw ?? `${JSON.stringify(state, null, 2)}\n`;
       await writeFile(store.statePath(task.taskId), raw, 'utf8');
 
-      await expect(store.loadTask(task.taskId)).rejects.toMatchObject({ code: 'invalid_state' });
-      expect(await readFile(store.statePath(task.taskId), 'utf8')).toBe(raw);
+      if (variant.name === 'valid but non-canonical contract key order') {
+        const loaded = await store.loadTask(task.taskId);
+        const persisted = JSON.parse(await readFile(store.statePath(task.taskId), 'utf8')) as {
+          contract: unknown;
+        };
+        expect(loaded.schemaVersion).toBe(4);
+        expect(JSON.stringify(persisted.contract)).toBe(JSON.stringify(loaded.contract));
+      } else {
+        await expect(store.loadTask(task.taskId)).rejects.toMatchObject({ code: 'invalid_state' });
+        expect(await readFile(store.statePath(task.taskId), 'utf8')).toBe(raw);
+      }
     }
 
     // Unknown extra fields on an otherwise valid v4 record are tolerated; the

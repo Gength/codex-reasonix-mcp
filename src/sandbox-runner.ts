@@ -1,4 +1,4 @@
-import { access, constants, mkdtemp, realpath, rm, stat } from 'node:fs/promises';
+import { access, constants, mkdtemp, open, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -20,10 +20,12 @@ import { BridgeError } from './errors.js';
  *   explicit `allowUnsandboxed` escape hatch is set.
  */
 export type SandboxEngine = 'bubblewrap' | 'seatbelt';
+export type BubblewrapNetworkIsolation = 'namespace' | 'seccomp';
 
 export interface SandboxStatus {
   available: boolean;
   engine: SandboxEngine | null;
+  networkIsolation?: BubblewrapNetworkIsolation;
   reason?: string;
 }
 
@@ -103,10 +105,66 @@ export async function resolveCredentialOverlays(
   return overlays;
 }
 
+const BPF_LD_W_ABS = 0x20;
+const BPF_JMP_JEQ_K = 0x15;
+const BPF_RET_K = 0x06;
+const SECCOMP_DATA_ARCH_OFFSET = 4;
+const SECCOMP_DATA_NR_OFFSET = 0;
+const AUDIT_ARCH_X86_64 = 0xc000003e;
+const X32_SYSCALL_BIT = 0x40000000;
+const SECCOMP_RET_KILL_PROCESS = 0x80000000;
+const SECCOMP_RET_ERRNO = 0x00050000;
+const SECCOMP_RET_ALLOW = 0x7fff0000;
+const EPERM = 1;
+
+// socket(2) plus every operation needed to use a socket. io_uring is blocked
+// too: newer kernels can create/connect sockets through io_uring opcodes.
+const NETWORK_SYSCALLS = [
+  41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 288, 299, 307, 425, 426, 427,
+] as const;
+
+type BpfInstruction = readonly [code: number, jt: number, jf: number, k: number];
+
+/**
+ * Build a deny-network filter for the x86_64 Linux ABI. A network namespace is
+ * preferred; this is only for hosts that prohibit CLONE_NEWNET entirely.
+ */
+export function buildNetworkSeccompFilter(): Buffer {
+  if (process.arch !== 'x64') {
+    throw new Error(`seccomp network fallback is unsupported on ${process.arch}`);
+  }
+  const instructions: BpfInstruction[] = [
+    [BPF_LD_W_ABS, 0, 0, SECCOMP_DATA_ARCH_OFFSET],
+    [BPF_JMP_JEQ_K, 1, 0, AUDIT_ARCH_X86_64],
+    [BPF_RET_K, 0, 0, SECCOMP_RET_KILL_PROCESS],
+    [BPF_LD_W_ABS, 0, 0, SECCOMP_DATA_NR_OFFSET],
+  ];
+  for (const syscall of NETWORK_SYSCALLS) {
+    instructions.push(
+      [BPF_JMP_JEQ_K, 0, 1, syscall],
+      [BPF_RET_K, 0, 0, SECCOMP_RET_ERRNO | EPERM],
+      [BPF_JMP_JEQ_K, 0, 1, syscall | X32_SYSCALL_BIT],
+      [BPF_RET_K, 0, 0, SECCOMP_RET_ERRNO | EPERM],
+    );
+  }
+  instructions.push([BPF_RET_K, 0, 0, SECCOMP_RET_ALLOW]);
+
+  const filter = Buffer.alloc(instructions.length * 8);
+  for (const [index, [code, jt, jf, k]] of instructions.entries()) {
+    const offset = index * 8;
+    filter.writeUInt16LE(code, offset);
+    filter.writeUInt8(jt, offset + 2);
+    filter.writeUInt8(jf, offset + 3);
+    filter.writeUInt32LE(k >>> 0, offset + 4);
+  }
+  return filter;
+}
+
 /** Pure bwrap argv builder; `overlays` hide credential paths. */
 export function buildBwrapArgv(
   options: SandboxedCommandOptions,
   overlays: readonly CredentialOverlay[],
+  networkIsolation: BubblewrapNetworkIsolation = 'namespace',
 ): [string, ...string[]] {
   const argv: string[] = [
     'bwrap',
@@ -119,13 +177,14 @@ export function buildBwrapArgv(
     // guarantees descendants die with the command.
     '--unshare-user',
     '--unshare-ipc',
-    '--unshare-net',
     '--unshare-uts',
     '--unshare-pid',
     '--ro-bind',
     '/',
     '/',
   ];
+  if (networkIsolation === 'namespace') argv.push('--unshare-net');
+  else argv.push('--seccomp', '3');
   for (const overlay of overlays) {
     if (overlay.kind === 'dir') {
       argv.push('--tmpfs', overlay.path);
@@ -191,6 +250,50 @@ export function buildSeatbeltProfile(
 
 let cachedSandbox: SandboxStatus | undefined;
 
+async function probeBwrapSeccomp(): Promise<boolean> {
+  if (process.arch !== 'x64') return false;
+  const root = await mkdtemp(path.join(os.tmpdir(), 'codex-reasonix-seccomp-'));
+  const filterPath = path.join(root, 'network-filter.bpf');
+  let filterFile: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    await writeFile(filterPath, buildNetworkSeccompFilter(), { mode: 0o600 });
+    filterFile = await open(filterPath, 'r');
+    const probe = await runCommand({
+      argv: [
+        'bwrap',
+        '--die-with-parent',
+        '--unshare-user',
+        '--unshare-ipc',
+        '--unshare-uts',
+        '--unshare-pid',
+        '--ro-bind',
+        '/',
+        '/',
+        '--tmpfs',
+        '/tmp',
+        '--proc',
+        '/proc',
+        '--dev',
+        '/dev',
+        '--seccomp',
+        '3',
+        '--',
+        '/bin/true',
+      ],
+      cwd: root,
+      timeoutMs: 10_000,
+      maxOutputBytes: 4_096,
+      passFds: [filterFile.fd],
+    });
+    return probe.exitCode === 0;
+  } catch {
+    return false;
+  } finally {
+    await filterFile?.close().catch(() => undefined);
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
 /**
  * Detect and probe the platform sandbox engine. Results are cached for the
  * process lifetime; use {@link resetSandboxCache} in tests.
@@ -217,14 +320,19 @@ export async function detectSandbox(): Promise<SandboxStatus> {
       timeoutMs: 10_000,
       maxOutputBytes: 4_096,
     });
-    status =
-      probe.exitCode === 0
-        ? { available: true, engine: 'bubblewrap' }
-        : {
-            available: false,
-            engine: 'bubblewrap',
-            reason: `bwrap probe failed: ${probe.stderr.trim().slice(0, 512) || 'non-zero exit'}`,
-          };
+    if (probe.exitCode === 0) {
+      status = { available: true, engine: 'bubblewrap', networkIsolation: 'namespace' };
+    } else if (await probeBwrapSeccomp()) {
+      // ponytail: deny-list fallback for hosts with CLONE_NEWNET disabled;
+      // use a real network namespace when the host permits it.
+      status = { available: true, engine: 'bubblewrap', networkIsolation: 'seccomp' };
+    } else {
+      status = {
+        available: false,
+        engine: 'bubblewrap',
+        reason: `bwrap probe failed: ${probe.stderr.trim().slice(0, 512) || 'non-zero exit'}`,
+      };
+    }
   } else if (process.platform === 'darwin') {
     try {
       await access('/usr/bin/sandbox-exec', constants.X_OK);
@@ -320,17 +428,26 @@ export async function runSandboxed(
     tmpDir,
     scratchDir,
   };
-  const argv: [string, ...string[]] =
-    status.engine === 'bubblewrap'
-      ? buildBwrapArgv(sandboxOptions, overlays)
-      : [
-          '/usr/bin/sandbox-exec',
-          '-p',
-          buildSeatbeltProfile(sandboxOptions, overlays),
-          '--',
-          ...options.argv,
-        ];
+  let filterRoot: string | undefined;
+  let filterFile: Awaited<ReturnType<typeof open>> | undefined;
   try {
+    if (status.engine === 'bubblewrap' && status.networkIsolation === 'seccomp') {
+      filterRoot = await mkdtemp(path.join(tmpDir, 'codex-reasonix-seccomp-'));
+      await writeFile(path.join(filterRoot, 'network-filter.bpf'), buildNetworkSeccompFilter(), {
+        mode: 0o600,
+      });
+      filterFile = await open(path.join(filterRoot, 'network-filter.bpf'), 'r');
+    }
+    const argv: [string, ...string[]] =
+      status.engine === 'bubblewrap'
+        ? buildBwrapArgv(sandboxOptions, overlays, status.networkIsolation)
+        : [
+            '/usr/bin/sandbox-exec',
+            '-p',
+            buildSeatbeltProfile(sandboxOptions, overlays),
+            '--',
+            ...options.argv,
+          ];
     return await runCommand({
       argv,
       cwd,
@@ -338,8 +455,11 @@ export async function runSandboxed(
       maxOutputBytes: options.maxOutputBytes,
       env: sandboxEnv,
       signal: options.signal,
+      passFds: filterFile ? [filterFile.fd] : undefined,
     });
   } finally {
+    if (filterFile) await filterFile.close().catch(() => undefined);
+    if (filterRoot) await rm(filterRoot, { recursive: true, force: true });
     if (scratchDir) {
       await rm(scratchDir, { recursive: true, force: true });
     }

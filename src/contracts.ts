@@ -266,7 +266,7 @@ export function parseTaskContract(input: unknown): TaskContractV1 {
         }
       : {}),
   };
-  return contract;
+  return JSON.parse(canonicalContractJson(contract)) as TaskContractV1;
 }
 
 function deduplicateFileAssertions(assertions: readonly FileAssertion[]): FileAssertion[] {

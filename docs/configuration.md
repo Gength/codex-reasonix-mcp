@@ -8,7 +8,7 @@ after changing its MCP environment.
 | `REASONIX_BIN`                       | `reasonix`               | Reasonix executable or absolute local build path                          |
 | `CODEX_REASONIX_STATE_DIR`           | platform state directory | Private tasks, worktrees, locks, archives, tombstones, hooks, and metrics |
 | `CODEX_REASONIX_MODEL`               | `deepseek-v4-flash`      | Required Reasonix model selector                                          |
-| `CODEX_REASONIX_EFFORT`              | `medium`                 | Default task effort: low, medium, high, or max (minimal is legacy-only)   |
+| `CODEX_REASONIX_EFFORT`              | `high`                   | Default task effort: low, medium, high, or max (minimal is legacy-only)   |
 | `CODEX_REASONIX_NETWORK`             | off                      | Request sandbox egress; Codex metadata must also permit it                |
 | `CODEX_REASONIX_SECRET_SCANNER_ARGV` | unset                    | JSON argv array for an additional local secret scanner                    |
 
@@ -22,7 +22,7 @@ Example stable registration with an external scanner:
 codex mcp add reasonix-worker \
   --env REASONIX_BIN=/opt/reasonix/bin/reasonix \
   --env CODEX_REASONIX_SECRET_SCANNER_ARGV='["secret-scanner","scan"]' \
-  -- npx -y codex-reasonix-mcp@0.1.1
+  -- node /absolute/path/to/codex-reasonix-mcp/dist/index.js
 ```
 
 The scanner receives changed file names appended to its configured argv and
@@ -41,13 +41,13 @@ Standard and deep doctor both fail their required configuration check when the
 setting is absent or lower.
 
 Task input `reasoning_effort` overrides `CODEX_REASONIX_EFFORT`; when both are
-absent the bridge uses `medium`. `minimal` is no longer accepted on the wire or
+absent the bridge uses `high`. `minimal` is no longer accepted on the wire or
 in new configuration; persisted legacy records that used it remain readable.
 There is no implicit inheritance from Codex's chat effort control. A resumed
 task retains its stored effort.
 
 Task input `worker_lane` selects the execution lane: `fast` (default) runs a
-direct-edit Reasonix session in economy + normal mode with no Goal, AutoResearch,
+direct-edit Reasonix session in economy/balanced + normal mode with no Goal, AutoResearch,
 review/task skills, or subagents; `deep` runs Delivery + Goal for explicitly
 long-horizon tasks. The lane is persisted in the task execution profile and is
 immutable for an existing task.

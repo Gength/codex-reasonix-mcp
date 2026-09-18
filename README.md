@@ -1,7 +1,7 @@
 # codex-reasonix-mcp
 
-[![CI](https://github.com/rixzkiye/codex-reasonix-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/rixzkiye/codex-reasonix-mcp/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/rixzkiye/codex-reasonix-mcp/actions/workflows/codeql.yml/badge.svg)](https://github.com/rixzkiye/codex-reasonix-mcp/actions/workflows/codeql.yml)
+[![CI](https://github.com/Gength/codex-reasonix-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Gength/codex-reasonix-mcp/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Gength/codex-reasonix-mcp/actions/workflows/codeql.yml/badge.svg)](https://github.com/Gength/codex-reasonix-mcp/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ![Codex supervising a Reasonix worker through the security-first MCP bridge](docs/assets/codex-reasonix-bridge.svg)
@@ -17,11 +17,10 @@ paths, LLM router, native-Windows implementation, or Codex source modification.
 
 ## Release status
 
-The last published stable npm release is `0.1.1`. This source tree is prepared
-as `0.2.0-rc.4`; that version is not available from npm until its GitHub
-prerelease and trusted-publishing workflow complete successfully. Official
-Reasonix `v1.19.0` remains the documented compatibility baseline, while runtime
-capability checks—not a version string—remain authoritative.
+This source tree is versioned `0.2.0-rc.4`. It is consumed from source rather
+than npm, so the checked-out revision—not a dist-tag—determines what you run.
+Official Reasonix `v1.19.0` remains the documented compatibility baseline, while
+runtime capability checks—not a version string—remain authoritative.
 
 ## Requirements
 
@@ -58,23 +57,19 @@ in CI.
 
 ## Install for Codex
 
-Use the published stable package today:
+This fork is installed from source and is not published to npm, so the bridge
+you run always matches this repository. Codex requires Node 22 or newer.
 
 ```sh
-codex mcp add reasonix-worker -- npx -y codex-reasonix-mcp@0.1.1
-```
-
-For a local checkout of this release-candidate tree:
-
-```sh
+git clone https://github.com/Gength/codex-reasonix-mcp.git
+cd codex-reasonix-mcp
 pnpm install --frozen-lockfile
 pnpm build
-codex mcp add reasonix-worker -- node /absolute/path/to/codex-reasonix-mcp/dist/index.js
+codex mcp add reasonix-worker -- node "$PWD/dist/index.js"
 ```
 
-After `0.2.0-rc.4` is actually published, consumers can pin that exact version
-instead of relying on a moving dist-tag. Prereleases publish under `next`;
-stable releases publish under `latest`.
+`pnpm build` is required because `dist/` is not committed. Pass an absolute path
+to `codex mcp add`, since Codex resolves the command outside the checkout.
 
 ## Diagnostics
 
@@ -135,7 +130,7 @@ snapshot by mapping `review_revision` to `expected_review_revision` and
 subagents, 600-second default deadline); choose `worker_lane: "deep"` only for
 explicitly long-horizon Delivery + Goal work (3,600-second default).
 `reasoning_effort` is selected per task (`low`, `medium`, `high`, or `max`);
-precedence is task field, then `CODEX_REASONIX_EFFORT`, then `medium`. Choose
+precedence is task field, then `CODEX_REASONIX_EFFORT`, then `high`. Choose
 the lowest sufficient effort. `execution_timeout_seconds` is a persisted
 per-task execution deadline; new tasks default by lane (600 fast / 3,600 deep)
 and may request 60–14,400 seconds. The separate delegate wait remains bounded
@@ -257,11 +252,11 @@ See [architecture](docs/architecture.md), [configuration](docs/configuration.md)
 
 ## Community
 
-- Use the structured [bug report](https://github.com/rixzkiye/codex-reasonix-mcp/issues/new?template=bug_report.yml)
-  or [feature request](https://github.com/rixzkiye/codex-reasonix-mcp/issues/new?template=feature_request.yml).
+- Use the structured [bug report](https://github.com/Gength/codex-reasonix-mcp/issues/new?template=bug_report.yml)
+  or [feature request](https://github.com/Gength/codex-reasonix-mcp/issues/new?template=feature_request.yml).
 - Follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 - Report vulnerabilities privately through
-  [GitHub Security Advisories](https://github.com/rixzkiye/codex-reasonix-mcp/security/advisories/new),
+  [GitHub Security Advisories](https://github.com/Gength/codex-reasonix-mcp/security/advisories/new),
   as described in [SECURITY.md](SECURITY.md).
 
 ## License

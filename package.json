@@ -7,11 +7,11 @@
   "author": "Codex Reasonix MCP contributors",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rixzkiye/codex-reasonix-mcp.git"
+    "url": "git+https://github.com/Gength/codex-reasonix-mcp.git"
   },
-  "homepage": "https://github.com/rixzkiye/codex-reasonix-mcp#readme",
+  "homepage": "https://github.com/Gength/codex-reasonix-mcp#readme",
   "bugs": {
-    "url": "https://github.com/rixzkiye/codex-reasonix-mcp/issues"
+    "url": "https://github.com/Gength/codex-reasonix-mcp/issues"
   },
   "keywords": [
     "codex",
